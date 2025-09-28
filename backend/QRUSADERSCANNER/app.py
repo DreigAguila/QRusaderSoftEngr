@@ -68,7 +68,7 @@ def check_safe_browsing(url):
 MAJOR_TRUSTED_DOMAINS = [
     "google.com", "facebook.com", "github.com", "microsoft.com",
     "amazon.com", "apple.com", "twitter.com", "linkedin.com",
-    "youtube.com", "reddit.com", "stackoverflow.com", "wikipedia.org", "kaggle.com"
+    "youtube.com", "reddit.com", "stackoverflow.com", "wikipedia.org", "kaggle.com", "edutopia.org"
 ]
 EDUCATIONAL_DOMAINS = [
     ".edu", ".edu.ph", ".edu.au", ".edu.sg", ".edu.my", ".edu.in",
