@@ -41,7 +41,7 @@ print("Model classes:", rf_model.classes_)
 # ===============================
 # Safe Browsing API
 # ===============================
-SAFE_BROWSING_API_KEY = "AIzaSyBFFrYMX2p6DYJ-7gkxblCO4R6GkCSWg7Y"  # ⚠️ Replace with valid API key
+SAFE_BROWSING_API_KEY = os.getenv("SAFE_BROWSING_API_KEY")  # Get from environment
 SAFE_BROWSING_URL = f"https://safebrowsing.googleapis.com/v4/threatMatches:find?key={SAFE_BROWSING_API_KEY}"
 
 def check_safe_browsing(url):
