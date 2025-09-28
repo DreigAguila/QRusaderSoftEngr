@@ -15,6 +15,7 @@ import base64
 import io
 from PIL import Image
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import tldextract
 
 # ===============================
 # Configure Flask paths
@@ -68,13 +69,14 @@ def check_safe_browsing(url):
 MAJOR_TRUSTED_DOMAINS = [
     "google.com", "facebook.com", "github.com", "microsoft.com",
     "amazon.com", "apple.com", "twitter.com", "linkedin.com",
-    "youtube.com", "reddit.com", "stackoverflow.com", "wikipedia.org", "kaggle.com", "edutopia.org"
+    "youtube.com", "reddit.com", "stackoverflow.com", "wikipedia.org", "kaggle.com", "edutopia.org", "nasa.gov",
+
 ]
 EDUCATIONAL_DOMAINS = [
     ".edu", ".edu.ph", ".edu.au", ".edu.sg", ".edu.my", ".edu.in",
     ".ac.uk", ".edu.cn", ".edu.br", ".edu.mx", ".edu.co", ".ac.in", ".ac.jp"
 ]
-LEGITIMATE_TLDS = [".com", ".org", ".net", ".gov", ".mil"]
+LEGITIMATE_TLDS = [".com", ".org", ".net", ".gov", ".mil", ".ph", ".io", ".edu"]
 SUSPICIOUS_TLDS = [
     ".tk", ".ml", ".ga", ".cf", ".pw", ".gq", ".xyz", ".top", ".win", ".bid", ".loan", ".club"
 ]
@@ -96,9 +98,11 @@ def abnormal_url(url):
     return int(hostname not in url if hostname else 0)
 
 def tld_length(url):
-    hostname = urlparse(url).hostname
-    if not hostname: return 0
-    return len(hostname.split('.')[-1])
+    """
+    Returns the length of the TLD (supports multi-part TLDs like edu.ph)
+    """
+    ext = tldextract.extract(url)
+    return len(ext.suffix)  # ext.suffix gives the TLD (e.g., "edu.ph")
 
 def count_digits(url): return sum(c.isdigit() for c in url)
 def count_letters(url): return sum(c.isalpha() for c in url)
@@ -114,9 +118,21 @@ def is_typo_squatting(url, trusted_domains=MAJOR_TRUSTED_DOMAINS):
     max_sim = max((SequenceMatcher(None, hostname, td).ratio() for td in trusted_domains), default=0)
     return int(max_sim >= 0.85 and hostname not in trusted_domains)
 
-def is_whitelisted(url: str) -> bool:
-    domain = normalize_domain(urlparse(url).netloc)
-    return any(domain.endswith(td) for td in MAJOR_TRUSTED_DOMAINS)
+def is_trusted_domain(url):
+    ext = tldextract.extract(url)
+    domain = ext.registered_domain  # e.g., national-u.edu.ph
+    tld = ext.suffix                # e.g., edu.ph
+
+    # Check major trusted domains
+    if domain in MAJOR_TRUSTED_DOMAINS:
+        return True
+    # Check educational domains
+    if any(tld.endswith(ed.lstrip('.')) for ed in EDUCATIONAL_DOMAINS):
+        return True
+    # Check legitimate TLDs
+    if any(tld.endswith(ltld.lstrip('.')) for ltld in LEGITIMATE_TLDS):
+        return True
+    return False
 
 # ===============================
 # WHOIS feature extraction
@@ -194,11 +210,7 @@ def extract_features(url, whois_info=None):
         'domain_age_missing': whois_info.get("domain_age_missing", 1) if whois_info else 1,
         'dns_record': whois_info.get("dns_record", 0) if whois_info else 0,
         'registrar_known': whois_info.get("registrar_known", 0) if whois_info else 0,
-        'is_trusted_domain': int(
-            any(td in domain for td in MAJOR_TRUSTED_DOMAINS) or
-            any(domain.endswith(ed) for ed in EDUCATIONAL_DOMAINS) or
-            any(domain.endswith(tld) for tld in LEGITIMATE_TLDS)
-        ),
+        'is_trusted_domain': int(is_trusted_domain(url)),
         'is_suspicious_domain': int(any(domain.endswith(tld) for tld in SUSPICIOUS_TLDS)),
         'is_url_shortener': int(any(short in domain for short in URL_SHORTENERS)),
         'abnormal_url': abnormal_url(url),
@@ -422,7 +434,7 @@ def scan_qr():
             sb_flag = check_safe_browsing(normalized_url)
             prob = rf_model.predict_proba(feats_df)[0][1]
 
-            if is_whitelisted(normalized_url):
+            if is_trusted_domain(normalized_url):
                 risk = "✅ Safe" if not sb_flag else "🚨 Flagged by Safe Browsing"
                 prob_malicious = 0.0
                 is_malicious = sb_flag
@@ -497,7 +509,7 @@ def analyze_url():
         sb_flag = check_safe_browsing(normalized_url)
         prob = rf_model.predict_proba(feats_df)[0][1]
 
-        if is_whitelisted(normalized_url):
+        if is_trusted_domain(normalized_url):
             risk = "✅ Safe" if not sb_flag else "🚨 Flagged by Safe Browsing"
             prob_malicious = 0.0
             is_malicious = sb_flag
@@ -505,7 +517,7 @@ def analyze_url():
             risk = risk_level(prob, sb_flag)
             prob_malicious = float(round(prob * 100, 2))
             is_malicious = bool(prob >= 0.70 or sb_flag)
-
+            
         return jsonify({
             'success': True,
             'url': raw,
